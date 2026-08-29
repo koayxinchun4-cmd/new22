@@ -102,6 +102,9 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     private val _showCleanDialog = MutableStateFlow(false)
     val showCleanDialog: StateFlow<Boolean> = _showCleanDialog.asStateFlow()
 
+    private val _showSessionSwitcher = MutableStateFlow(false)
+    val showSessionSwitcher: StateFlow<Boolean> = _showSessionSwitcher.asStateFlow()
+
     private val _cleanNotification = MutableStateFlow<String?>(null)
     val cleanNotification: StateFlow<String?> = _cleanNotification.asStateFlow()
 
@@ -504,11 +507,34 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         )
     }
 
+    fun toggleTabMute(tabId: String) {
+        val tab = _tabs.value.find { it.id == tabId } ?: return
+        val newMuted = !tab.isMuted
+        updateTab(tabId) { it.copy(isMuted = newMuted) }
+        webViewPool.setTabMuted(tabId, newMuted)
+    }
+
+    fun captureVisibleThumbnails() {
+        _tabs.value.forEach { tab ->
+            webViewPool.captureThumbnail(tab.id) { _ -> }
+        }
+    }
+
     // Dialog Toggles
     fun setShowScriptDialog(show: Boolean) { _showScriptDialog.value = show }
     fun setShowAccountDialog(show: Boolean) { _showAccountDialog.value = show }
     fun setShowUaDialog(show: Boolean) { _showUaDialog.value = show }
     fun setShowCleanDialog(show: Boolean) { _showCleanDialog.value = show }
+    fun setShowSessionSwitcher(show: Boolean) {
+        if (show) {
+            captureVisibleThumbnails()
+        }
+        _showSessionSwitcher.value = show
+    }
+    fun toggleSessionSwitcher() {
+        val next = !_showSessionSwitcher.value
+        setShowSessionSwitcher(next)
+    }
 
     override fun onCleared() {
         super.onCleared()

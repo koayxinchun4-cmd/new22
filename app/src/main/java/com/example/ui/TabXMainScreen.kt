@@ -57,6 +57,8 @@ import com.example.ui.components.AccountManagerDialog
 import com.example.ui.components.BrowserTopBar
 import com.example.ui.components.CacheCleanerDialog
 import com.example.ui.components.FloatingMacroHUD
+import com.example.ui.components.GameSessionBottomBar
+import com.example.ui.components.GameSessionTabSwitcherSheet
 import com.example.ui.components.MultiWebViewContainer
 import com.example.ui.components.SaveScriptDialog
 import com.example.ui.components.ScriptManagerDialog
@@ -92,6 +94,7 @@ fun TabXMainScreen(
     val showAccountDialog by viewModel.showAccountDialog.collectAsState()
     val showUaDialog by viewModel.showUaDialog.collectAsState()
     val showCleanDialog by viewModel.showCleanDialog.collectAsState()
+    val showSessionSwitcher by viewModel.showSessionSwitcher.collectAsState()
     val cleanNotification by viewModel.cleanNotification.collectAsState()
 
     var showSaveScriptDialog by remember { mutableStateOf(false) }
@@ -126,6 +129,21 @@ fun TabXMainScreen(
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
+        bottomBar = {
+            GameSessionBottomBar(
+                tabs = tabs,
+                activeTab = activeTab,
+                layoutMode = layoutMode,
+                isGlobalSync = isGlobalSync,
+                isAllMuted = isAllMuted,
+                isMacroRunning = macroState.isRunning,
+                onOpenSessionSwitcher = { viewModel.setShowSessionSwitcher(true) },
+                onLayoutModeChanged = { viewModel.setLayoutMode(it) },
+                onToggleSync = { viewModel.toggleGlobalSync() },
+                onToggleAllMute = { viewModel.toggleAllMute() },
+                onAddNewSession = { viewModel.addNewTab() }
+            )
+        },
         containerColor = MaterialTheme.colorScheme.background
     ) { innerPadding ->
         Box(
@@ -285,6 +303,39 @@ fun TabXMainScreen(
                         }
                     }
                 }
+            }
+
+            // Rich Game Session Tab Switcher Sheet (with live screenshot thumbnails & status indicators)
+            if (showSessionSwitcher) {
+                GameSessionTabSwitcherSheet(
+                    tabs = tabs,
+                    activeTabId = activeTabId,
+                    layoutMode = layoutMode,
+                    isGlobalSync = isGlobalSync,
+                    isAllMuted = isAllMuted,
+                    isMacroRunning = macroState.isRunning,
+                    webViewPool = viewModel.webViewPool,
+                    onDismiss = { viewModel.setShowSessionSwitcher(false) },
+                    onSelectSession = { viewModel.selectTab(it) },
+                    onCloseSession = { viewModel.closeTab(it) },
+                    onMaximizeSession = { tabId ->
+                        viewModel.selectTab(tabId)
+                        viewModel.setLayoutMode(ViewLayoutMode.SINGLE)
+                    },
+                    onReloadSession = { tabId ->
+                        val targetTab = tabs.find { it.id == tabId }
+                        if (targetTab != null) {
+                            val wv = viewModel.webViewPool.getOrCreateWebView(targetTab)
+                            wv.reload()
+                        }
+                    },
+                    onToggleSessionMute = { tabId ->
+                        viewModel.toggleTabMute(tabId)
+                    },
+                    onAddNewSession = { viewModel.addNewTab() },
+                    onLaunch25Matrix = { viewModel.launch25AccountsMatrix() },
+                    onBatchReloadAll = { viewModel.batchReloadAll() }
+                )
             }
 
             // Dialogs

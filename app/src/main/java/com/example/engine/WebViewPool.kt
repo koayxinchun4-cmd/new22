@@ -3,6 +3,7 @@ package com.example.engine
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.os.Build
 import android.view.View
 import android.webkit.CookieManager
@@ -25,6 +26,7 @@ class WebViewPool(
     private val onMasterSyncTouch: (x: Float, y: Float) -> Unit
 ) {
     private val webViewMap = ConcurrentHashMap<String, WebView>()
+    private val thumbnailCache = ConcurrentHashMap<String, Bitmap>()
 
     @SuppressLint("SetJavaScriptEnabled")
     fun getOrCreateWebView(tab: TabItem): WebView {
@@ -204,7 +206,40 @@ class WebViewPool(
         }
     }
 
+    fun getCachedThumbnail(tabId: String): Bitmap? {
+        return thumbnailCache[tabId]
+    }
+
+    fun captureThumbnail(tabId: String, width: Int = 300, height: Int = 180, onCaptured: (Bitmap?) -> Unit) {
+        val webView = webViewMap[tabId]
+        if (webView == null || webView.width <= 0 || webView.height <= 0) {
+            onCaptured(thumbnailCache[tabId])
+            return
+        }
+        webView.post {
+            try {
+                val w = webView.width
+                val h = webView.height
+                if (w > 0 && h > 0) {
+                    val fullBitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+                    val canvas = Canvas(fullBitmap)
+                    webView.draw(canvas)
+                    val targetHeight = (height.coerceAtLeast((width * h) / w)).coerceAtMost(400)
+                    val scaledBitmap = Bitmap.createScaledBitmap(fullBitmap, width, targetHeight, true)
+                    fullBitmap.recycle()
+                    thumbnailCache[tabId] = scaledBitmap
+                    onCaptured(scaledBitmap)
+                } else {
+                    onCaptured(thumbnailCache[tabId])
+                }
+            } catch (e: Exception) {
+                onCaptured(thumbnailCache[tabId])
+            }
+        }
+    }
+
     fun releaseTab(tabId: String) {
+        thumbnailCache.remove(tabId)?.recycle()
         webViewMap.remove(tabId)?.apply {
             stopLoading()
             loadUrl("about:blank")
@@ -215,6 +250,8 @@ class WebViewPool(
     }
 
     fun releaseAll() {
+        thumbnailCache.values.forEach { it.recycle() }
+        thumbnailCache.clear()
         webViewMap.forEach { (_, webView) ->
             webView.stopLoading()
             webView.loadUrl("about:blank")
