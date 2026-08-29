@@ -20,6 +20,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -30,32 +32,40 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Accept Android SDK Licenses & Install Platform 36
+      - name: Accept Licenses & Prepare Environment
         run: |
           yes | sdkmanager --licenses || true
-          sdkmanager "platforms;android-36" "build-tools;36.0.0" || true
-
-      - name: Restore Keystore & Env
-        run: |
+          # Ensure debug.keystore is guaranteed to exist
           if [ -f "debug.keystore.base64" ]; then
-            base64 -d debug.keystore.base64 > debug.keystore
+            base64 -d debug.keystore.base64 > debug.keystore 2>/dev/null || true
           fi
-          if [ ! -f ".env" ] && [ -f ".env.example" ]; then
-            cp .env.example .env
+          if [ ! -f "debug.keystore" ] || [ ! -s "debug.keystore" ]; then
+            keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          fi
+          # Ensure .env exists for secrets plugin
+          if [ ! -f ".env" ]; then
+            if [ -f ".env.example" ]; then
+              cp .env.example .env
+            else
+              touch .env
+            fi
           fi
 
       - name: Setup Gradle 9.3.1
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.3.1'
+          cache-disabled: false
 
       - name: Build Debug APK
         run: |
           gradle :app:assembleDebug \
             -Dorg.gradle.configuration-cache=false \
+            -Dorg.gradle.daemon=false \
+            -Pandroid.builder.sdkDownload=true \
             -Pandroid.injected.invoked.from.ide=true \
             -PgoogleServices.missing.passthrough=true \
-            --info --stacktrace
+            --stacktrace
 
       - name: Upload Debug APK Artifact
         uses: actions/upload-artifact@v4
